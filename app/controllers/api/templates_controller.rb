@@ -31,6 +31,39 @@ module Api
       }
     end
 
+    def create
+      @template = Template.new
+      @template.account = current_account
+      @template.author = current_user
+      @template.folder = TemplateFolders.find_or_create_by_name(current_user, params[:folder_name])
+      @template.name = params[:name].presence || 'New Template'
+
+      submitters = Array.wrap(params[:submitters].presence || [{ 'name' => 'First Party' }])
+      @template.submitters = submitters.map.with_index do |s, i|
+        { 'name' => s[:name] || s['name'] || "Party #{i + 1}", 'uuid' => SecureRandom.uuid }
+      end
+
+      @template.save!
+
+      documents_params = build_documents_params
+      documents, = Templates::CreateAttachments.call(@template, documents_params, extract_fields: true)
+      schema = documents.map { |doc| { attachment_uuid: doc.uuid, name: doc.filename.base } }
+
+      if @template.fields.blank?
+        @template.fields = Templates::ProcessDocument.normalize_attachment_fields(@template, documents)
+        schema.each { |item| item['pending_fields'] = true } if @template.fields.present?
+      end
+
+      @template.update!(schema:)
+
+      WebhookUrls.enqueue_events(@template, 'template.created')
+      SearchEntries.enqueue_reindex(@template)
+
+      render json: Templates::SerializeForApi.call(@template), status: :created
+    rescue StandardError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
     def show
       render json: Templates::SerializeForApi.call(@template)
     end
@@ -80,6 +113,30 @@ module Api
     end
 
     private
+
+    def build_documents_params
+      docs = Array.wrap(params[:documents].presence || (params[:file] ? [{ name: params[:name], file: params[:file] }] : []))
+
+      files = docs.map do |doc|
+        file_data = doc[:file] || doc['file']
+        file_name = (doc[:name] || doc['name'] || params[:name] || 'document').to_s
+        file_name += '.pdf' unless file_name.match?(/\.\w+$/)
+
+        decoded = Base64.decode64(file_data)
+        tempfile = Tempfile.new([File.basename(file_name, '.*'), File.extname(file_name)])
+        tempfile.binmode
+        tempfile.write(decoded)
+        tempfile.rewind
+
+        ActionDispatch::Http::UploadedFile.new(
+          tempfile:,
+          filename: file_name,
+          type: Marcel::MimeType.for(tempfile, name: file_name)
+        )
+      end
+
+      { files: }
+    end
 
     def preload_relations(templates)
       schema_documents =
