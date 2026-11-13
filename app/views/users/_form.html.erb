@@ -39,6 +39,18 @@
       <% end %>
       <%= render 'role_select', f: %>
     <% end %>
+    <%# LeadTap: EA Sign editor auto-login signs these companies in as this user. %>
+    <div class="form-control">
+      <%= label_tag 'user[ea_sign_company_codes]', 'EA Sign company codes', class: 'label' %>
+      <% submitted = params[:user].respond_to?(:key?) ? params[:user][:ea_sign_company_codes] : nil %>
+      <%= text_field_tag 'user[ea_sign_company_codes]',
+                         submitted || (user.persisted? ? EaSignCompanyCodes.for_user(user).join(', ') : nil),
+                         class: 'base-input', placeholder: 'e.g. MASK, TEST', autocomplete: 'off' %>
+      <% user.errors[:base].each do |message| %>
+        <span class="label-text-alt mt-1 mx-1 text-red-600"><%= message %></span>
+      <% end %>
+      <span class="label-text-alt mt-1 mx-1">Core company codes, comma separated. Everyone in these companies opens EA Sign's editor as this user.</span>
+    </div>
     <% if local_assigns[:extra_fields_html].present? %>
       <%= local_assigns[:extra_fields_html] %>
     <% end %>

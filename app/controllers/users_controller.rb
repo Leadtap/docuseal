@@ -54,7 +54,12 @@ class UsersController < ApplicationController
     @user.password = SecureRandom.hex if @user.password.blank?
     @user.role = User::ADMIN_ROLE unless role_valid?(@user.role)
 
+    unless ea_sign_codes_available?
+      return render turbo_stream: turbo_stream.replace(:modal, template: 'users/new'), status: :unprocessable_content
+    end
+
     if @user.save
+      save_ea_sign_codes
       UserMailer.invitation_email(@user).deliver_later!
 
       redirect_back fallback_location: settings_users_path, notice: I18n.t('user_has_been_invited')
@@ -77,7 +82,12 @@ class UsersController < ApplicationController
       @user.account = account
     end
 
+    unless ea_sign_codes_available?
+      return render turbo_stream: turbo_stream.replace(:modal, template: 'users/edit'), status: :unprocessable_content
+    end
+
     if @user.update(attrs.except(*(current_user == @user ? %i[password otp_required_for_login role] : %i[password])))
+      save_ea_sign_codes
       if @user.try(:pending_reconfirmation?) && @user.previous_changes.key?(:unconfirmed_email)
         SendConfirmationInstructionsJob.perform_async('user_id' => @user.id)
 
@@ -102,6 +112,30 @@ class UsersController < ApplicationController
   end
 
   private
+
+  # LeadTap: EA Sign company codes (lib/ea_sign_company_codes.rb). Only touched when
+  # the form sent the field, so other user updates leave them alone.
+  def ea_sign_codes_param
+    return unless params[:user].respond_to?(:key?) && params[:user].key?(:ea_sign_company_codes)
+
+    EaSignCompanyCodes.normalize(params.dig(:user, :ea_sign_company_codes))
+  end
+
+  def ea_sign_codes_available?
+    codes = ea_sign_codes_param
+    return true if codes.nil?
+
+    taken = EaSignCompanyCodes.taken_by_others(@user, codes)
+    return true if taken.empty?
+
+    taken.each { |code, other| @user.errors.add(:base, "Company code #{code} is already used by #{other.email}") }
+    false
+  end
+
+  def save_ea_sign_codes
+    codes = ea_sign_codes_param
+    EaSignCompanyCodes.save!(@user, codes) unless codes.nil?
+  end
 
   def role_valid?(role)
     User::ROLES.include?(role)

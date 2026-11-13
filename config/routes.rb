@@ -14,6 +14,9 @@ Rails.application.routes.draw do
   get 'up' => 'rails/health#show'
   get 'manifest' => 'pwa#manifest'
 
+  # LeadTap: EA Sign editor auto-login (see EaSsoController, EaSsoLockMiddleware).
+  get '/ea_sso', to: 'ea_sso#show'
+
   devise_for :users, path: '/', only: %i[sessions passwords],
                      controllers: { sessions: 'sessions', passwords: 'passwords' }
 

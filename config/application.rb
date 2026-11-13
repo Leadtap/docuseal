@@ -12,6 +12,7 @@ require 'rails/health_controller'
 
 require_relative '../lib/api_path_consider_json_middleware'
 require_relative '../lib/normalize_client_ip_middleware'
+require_relative '../lib/ea_sso_lock_middleware'
 
 Bundler.require(*Rails.groups)
 
@@ -55,6 +56,8 @@ module DocuSeal
     config.middleware.insert_before ActionDispatch::Static, Rack::Deflater
     config.middleware.insert_before ActionDispatch::Static, NormalizeClientIpMiddleware
     config.middleware.insert_before ActionDispatch::Static, ApiPathConsiderJsonMiddleware
+    # LeadTap: confine EA Sign auto-login sessions to their template (after session + Warden).
+    config.middleware.insert_after Warden::Manager, EaSsoLockMiddleware
 
     config.generators.system_tests = nil
 
