@@ -175,5 +175,23 @@ describe 'EA Sign editor auto-login' do
       expect(allowed.call('GET', '/settings/api')).to be(false)
       expect(allowed.call('GET', '/api/templates/7')).to be(false)
     end
+
+    it 'allows public signing pages, which anyone with the link may open' do
+      allowed = ->(method, path) { described_class.allowed?(method, path, 7) }
+
+      expect(allowed.call('GET', '/s/JcB14SJ2x4pqMe')).to be(true)
+      expect(allowed.call('PUT', '/s/JcB14SJ2x4pqMe')).to be(true)
+      expect(allowed.call('GET', '/s/JcB14SJ2x4pqMe/values')).to be(true)
+      expect(allowed.call('GET', '/d/abc')).to be(true)
+      expect(allowed.call('GET', '/e/abc/completed')).to be(true)
+      expect(allowed.call('GET', '/success')).to be(true)
+      expect(allowed.call('POST', '/api/attachments')).to be(true)
+      expect(allowed.call('POST', '/api/submitter_form_views')).to be(true)
+
+      expect(allowed.call('GET', '/submissions/5')).to be(false)
+      expect(allowed.call('GET', '/api/submitters')).to be(false)
+      expect(allowed.call('GET', '/api/submissions/5')).to be(false)
+      expect(allowed.call('GET', '/settings/s/x')).to be(false)
+    end
   end
 end
