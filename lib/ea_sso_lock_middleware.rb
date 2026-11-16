@@ -30,6 +30,20 @@ class EaSsoLockMiddleware
     %r{\A/direct_uploads\z}
   ].freeze
 
+  # Public signing pages. They are open to anyone holding the link's slug, so a
+  # locked session gains nothing here — but a sender testing their own invite in
+  # the same browser as the editor must still be able to sign.
+  SIGNING = [
+    %r{\A/[sdpe]/[^/]+},                     # submit_form, start_form, draw signature, submissions preview
+    %r{\A/success\z},
+    %r{\A/resubmit_form\z},
+    %r{\A/submit_form_email_2fa\z},
+    %r{\A/start_form_email_2fa_send\z},
+    %r{\A/send_submission_email\z},
+    %r{\A/api/(attachments|identity_verification|kba|send_phone_verification_code|stripe_payments|
+              submitter_email_clicks|submitter_form_views|submitter_sms_clicks)(/|\z)}x
+  ].freeze
+
   # Under /templates/<tid>/…: things that leave the template or destroy it.
   BLOCKED_SUBPATHS = %r{\A/(clone|clone_and_replace|folder)(/|\z)}
 
@@ -47,6 +61,8 @@ class EaSsoLockMiddleware
     if lock['exp'].to_i < Time.now.to_i
       session.clear
       return @app.call(env) if request.path_info == '/ea_sso'
+      # The lock is gone now; a signing link opens as for anyone else.
+      return @app.call(env) if SIGNING.any? { |re| re.match?(request.path_info) }
 
       return refuse('Your EA Sign editor session has ended. Open the document again from EA Sign.')
     end
@@ -62,6 +78,7 @@ class EaSsoLockMiddleware
     return true if path == '/ea_sso' && method == 'GET'
     return true if path == '/sign_out'
     return true if SHARED.any? { |re| re.match?(path) }
+    return true if SIGNING.any? { |re| re.match?(path) }
 
     prefix = "/templates/#{tid}"
     return false unless path == prefix || path.start_with?("#{prefix}/")
